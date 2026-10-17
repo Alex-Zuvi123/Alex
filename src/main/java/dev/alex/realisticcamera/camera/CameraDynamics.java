@@ -13,11 +13,12 @@ public final class CameraDynamics {
     private static boolean initialized;
     private static long lastFrame = -1;
     private static float shakeYaw, shakePitch;
+    private static double filteredSpeed, smoothedYaw, smoothedPitch, smoothedRoll;
 
     public static void reset() {
         initialized = false; phase = 0; intensity = 0; frequency = 0; turning = 0;
         turnRoll = 0; strafeRoll = 0; roll = 0; shakeYaw = 0; shakePitch = 0;
-        lastFrame = -1;
+        lastFrame = -1; filteredSpeed = 0; smoothedYaw = 0; smoothedPitch = 0; smoothedRoll = 0;
     }
 
     public static void update(ClientPlayerEntity player, float tickDelta) {
@@ -29,29 +30,47 @@ public final class CameraDynamics {
         if (!initialized) { yawLast = yaw; initialized = true; }
         Vec3d v = player.getVelocity();
         double horizontal = Math.hypot(v.x, v.z);
-        // Original uses limb-animation movement speed. Velocity is a separate stable approximation.
-        double activity = MathHelper.clamp(horizontal / 0.22, 0.0, 1.5);
+        // Preserve original camera behavior, but stabilize speed and share a single gait phase.
+        double speedEase = 1.0 - Math.exp(-7.0 * dt);
+        filteredSpeed += (horizontal - filteredSpeed) * speedEase;
+        double activity = MathHelper.clamp(filteredSpeed / 0.22, 0.0, 1.5);
         if (!player.isOnGround()) activity *= 0.5;
         if (player.isSneaking()) activity /= 6.0;
-        double ease = 1.0 - Math.exp(-12.0 * dt);
+        double ease = 1.0 - Math.exp(-7.0 * dt);
         intensity += (activity - intensity) * ease;
         frequency += ((0.1 + 0.25 * activity) - frequency) * ease;
         if (intensity < 0.0005) intensity = 0;
-        phase += frequency * dt * 35.0;
+        // Stop gait phase when standing still: prevents jitter while stationary.
+        phase += frequency * dt * 35.0 * MathHelper.clamp(intensity * 2.0, 0.0, 1.0);
         if (phase > 10000.0) phase -= 10000.0;
         double strength = 4.0 * Math.pow(MathHelper.clamp(intensity * 0.6, 0.0, 1.5), 2);
-        shakeYaw = (float)(strength * smoothNoise(phase, 73));
-        shakePitch = (float)(strength * smoothNoise(phase, 1));
+        // Running amplitude reduced by up to 40%, smoothly blended with walking.
+        double runBlend = MathHelper.clamp((filteredSpeed - 0.17) / 0.11, 0.0, 1.0);
+        strength *= (1.0 - 0.40 * runBlend);
+        // Correlated gait channels (shared phase) + restrained procedural detail.
+        double gait = Math.sin(phase * 1.15);
+        double step = Math.cos(phase * 2.30);
+        double yawTarget = strength * (0.42 * gait + 0.18 * smoothNoise(phase * 0.45, 73));
+        double pitchTarget = strength * (0.45 * step + 0.12 * smoothNoise(phase * 0.45, 1));
         float yawChange = MathHelper.wrapDegrees(yaw - yawLast);
         yawLast = yaw;
-        turning += (yawChange - turning) * ease;
-        turnRoll += ((float)MathHelper.clamp(turning * 0.1, -20, 20) - turnRoll) * ease;
+        // Turning is visual only: never smooth or delay the actual mouse input.
+        double turnEase = 1.0 - Math.exp(-10.0 * dt);
+        turning += (yawChange - turning) * turnEase;
+        turnRoll += ((float)MathHelper.clamp(turning * 0.07, -8, 8) - turnRoll) * turnEase;
         double radians = Math.toRadians(yaw);
         double sideways = v.x * Math.cos(radians) + v.z * Math.sin(radians);
-        float lateralTarget = (float)MathHelper.clamp(-sideways * 5.0, -20, 20);
+        float lateralTarget = (float)MathHelper.clamp(-sideways * 3.5, -5, 5);
         strafeRoll += (lateralTarget - strafeRoll) * ease;
-        // Procedural roll vanishes at rest; turning and strafing fade out naturally.
-        roll = MathHelper.clamp(turnRoll + strafeRoll + (float)(2 * strength * smoothNoise(phase, 146)), -20, 20);
+        double rollTarget = MathHelper.clamp(turnRoll + strafeRoll + 0.20 * strength * gait, -9, 9);
+        // Final low-pass filter avoids abrupt changes from frame-to-frame.
+        double stabilization = 1.0 - Math.exp(-12.0 * dt);
+        smoothedYaw += (yawTarget - smoothedYaw) * stabilization;
+        smoothedPitch += (pitchTarget - smoothedPitch) * stabilization;
+        smoothedRoll += (rollTarget - smoothedRoll) * stabilization;
+        shakeYaw = (float)smoothedYaw;
+        shakePitch = (float)smoothedPitch;
+        roll = (float)smoothedRoll;
     }
 
     // Original independent value noise, smoothly interpolated in 1D; not copied from SPB.
