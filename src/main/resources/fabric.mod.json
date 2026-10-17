@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"realisticcamera_alex","version":"1.0.0","name":"RealisticCamera","description":"Client-side first-person movement camera inspired by SPB Revamped; independently implemented.","environment":"client","license":"MIT","mixins":["realisticcamera.mixins.json"],"depends":{"fabricloader":">=0.16.0","minecraft":"1.21.1","java":">=21"}}

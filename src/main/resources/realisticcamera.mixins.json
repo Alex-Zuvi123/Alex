@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "dev.alex.realisticcamera.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["CameraMotionMixin"],
+  "injectors": {"defaultRequire": 1}
+}
