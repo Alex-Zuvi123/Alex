@@ -34,19 +34,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          JAR="build/libs/RealisticCamera-1.21.1-Fabric-1.0.0.jar"
+          JAR="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' -print -quit)"
+          test -n "$JAR"
           test -s "$JAR"
           unzip -t "$JAR"
           unzip -p "$JAR" fabric.mod.json | grep -q 'realisticcamera_alex'
           unzip -p "$JAR" realisticcamera.mixins.json | grep -q 'CameraMotionMixin'
-          unzip -l "$JAR" | grep -q 'CameraDynamics.class'
-          unzip -l "$JAR" | grep -q 'CameraMotionMixin.class'
+          unzip -l "$JAR" | grep 'CameraDynamics.class'
+          unzip -l "$JAR" | grep 'CameraMotionMixin.class'
           mkdir -p release
-          cp "$JAR" release/RealisticCamera-1.21.1-Fabric.jar
+          cp "$JAR" release/RealisticCamera-1.21.1-Fabric-v1.1.jar
 
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
-          name: RealisticCamera-1.21.1-Fabric
-          path: release/RealisticCamera-1.21.1-Fabric.jar
+          name: RealisticCamera-1.21.1-Fabric-v1.1
+          path: release/RealisticCamera-1.21.1-Fabric-v1.1.jar
           if-no-files-found: error
